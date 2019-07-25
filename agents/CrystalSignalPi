@@ -1,0 +1,264 @@
+#!/bin/sh
+#
+#
+#	CrystalSignalPi OCF RA. 
+#	A simple monitoring agent utilizing the Crystal Signal Pi device.
+#
+#       Crystal Signal Pi is a product of Inifiniteloop Co.,Ltd.
+#       http://crystal-signal.com/
+#
+# Copyright (c) 2019 Linux-HA Japan Project
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of version 2 of the GNU General Public License as
+# published by the Free Software Foundation.
+#
+# This program is distributed in the hope that it would be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+#
+# Further, this software is distributed without any warranty that it is
+# free of the rightful claim of any third person regarding infringement
+# or the like.  Any license provided herein, whether implied or
+# otherwise, applies only to this software file.  Patent licenses, if
+# any, provided herein do not apply to combinations of this program with
+# other software, or any other product whatsoever.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write the Free Software Foundation,
+# Inc., 59 Temple Place - Suite 330, Boston MA 02111-1307, USA.
+#
+
+#######################################################################
+# Initialization:
+
+: ${OCF_FUNCTIONS_DIR=${OCF_ROOT}/lib/heartbeat}
+. ${OCF_FUNCTIONS_DIR}/ocf-shellfuncs
+
+
+RGB_RED="255,0,0"
+RGB_GREEN="0,255,0"
+RGB_BLUE="0,0,255"
+
+# parameter defaults
+OCF_RESKEY_node_color_map_default="$RGB_GREEN $RGB_BLUE"
+OCF_RESKEY_blink_period_default=500
+OCF_RESKEY_state_default="${HA_RSCTMP}/CrystalSignalPi-${OCF_RESOURCE_INSTANCE}.state"
+
+: ${OCF_RESKEY_node_color_map=${OCF_RESKEY_node_color_map_default}}
+: ${OCF_RESKEY_blink_period=${OCF_RESKEY_blink_period_default}}
+: ${OCF_RESKEY_state=${OCF_RESKEY_state_default}}
+
+
+# stub for debugging
+curl_stub() {
+    ocf_log info "DEBUG: curl $*"
+}
+#CURL=curl_stub
+
+: ${CURL:=curl}
+
+#######################################################################
+
+meta_data() {
+	cat <<END
+<?xml version="1.0"?>
+<!DOCTYPE resource-agent SYSTEM "ra-api-1.dtd">
+<resource-agent name="Dummy">
+<version>1.0</version>
+
+<longdesc lang="en">
+This ia a simple monitoring agent using the Crystal Signal Pi device.
+It controls the colors and blinkings of the Crystal Signal Pi device
+to notify the resource status of the Pacemaker cluster to the sysadmin.
+
+Crystal Signal Pi is a product of Inifiniteloop Co.,Ltd.
+See more details about the product:
+http://crystal-signal.com/
+
+</longdesc>
+<shortdesc lang="en">Crystal Signal Pi resource agent</shortdesc>
+
+<parameters>
+<parameter name="ip" unique="1" required="1">
+<longdesc lang="en">
+The IP address of the Crystal Signal Pi device.
+</longdesc>
+<shortdesc lang="en">IP address of the Crystal Signal Pi device</shortdesc>
+<content type="string" default="" />
+</parameter>
+
+<parameter name="node_color_map" unique="0">
+<longdesc lang="en">
+Node color map. The list of RGB values separated by a space.
+Each color is mapped to the nodes in the order of crm_node -l.
+The length of the list should be matched to the number of nodes in the cluster.
+
+The default value is green and blue for 2 nodes cluster.
+</longdesc>
+<shortdesc lang="en">node color map</shortdesc>
+<content type="string" default="${OCF_RESKEY_node_color_map_default}" />
+</parameter>
+
+<parameter name="blink_period" unique="0">
+<longdesc lang="en">
+Blinking speed when the resources are running on the last node
+and can not failover for any further failure.
+</longdesc>
+<shortdesc lang="en">blink period</shortdesc>
+<content type="number" default="${OCF_RESKEY_blink_period_default}" />
+</parameter>
+
+<parameter name="state" unique="1">
+<longdesc lang="en">
+Location to store the resource state in.
+</longdesc>
+<shortdesc lang="en">State file</shortdesc>
+<content type="string" default="${OCF_RESKEY_state_default}" />
+</parameter>
+
+</parameters>
+
+<actions>
+<action name="start"        timeout="20" />
+<action name="stop"         timeout="20" />
+<action name="monitor"      timeout="20" interval="10" depth="0" />
+<action name="meta-data"    timeout="5" />
+<action name="validate-all"   timeout="20" />
+</actions>
+</resource-agent>
+END
+}
+
+#######################################################################
+
+csp_usage() {
+	cat <<END
+usage: $0 {start|stop|monitor|validate-all|meta-data}
+
+Expects to have a fully populated OCF RA-compliant environment set.
+END
+}
+
+get_nodecolor() {
+    local nodename
+    local index
+
+    nodename=$(crm_node -n)
+    index=$(crm_node -l | awk '$2 == "'${nodename}'" { print NR }')
+
+    set -- ${OCF_RESKEY_node_color_map}
+    if [ -z "$index" ] || [ "$index" -gt $# ]; then
+     ocf_log info "${nodename} index out of range in the color map; use the last color"
+     index=$#
+    fi
+    shift $((index - 1))
+    echo "$1"
+}
+
+# determine if the resources can failover to another node
+# when the current running node is failed.
+check_can_failover() {
+    crm_simulate -S -L -d $(crm_node -n) | grep "${OCF_RESOURCE_INSTANCE} start" >/dev/null
+}
+
+# Call the Crystal Signal Pi API and change the color
+change_device_color() {
+    local color
+    local blink
+    local url
+
+    color=$1
+    blink=$2
+    [ -z "$blink" ] && blink=0
+
+    url="http://${OCF_RESKEY_ip}/ctrl/?color=${color}&mode=${blink}&repeat=0&period=${OCF_RESKEY_blink_period}&json=0"
+
+    # Invoke the API
+    $CURL -X GET "$url" >/dev/null
+}
+
+csp_start() {
+    csp_monitor
+    if [ $? =  $OCF_SUCCESS ]; then
+	return $OCF_SUCCESS
+    fi
+    touch ${OCF_RESKEY_state}
+
+
+    change_device_color $(get_nodecolor)
+}
+
+csp_stop() {
+    csp_monitor
+    if [ $? =  $OCF_SUCCESS ]; then
+	rm ${OCF_RESKEY_state}
+    fi
+
+    change_device_color ${RGB_RED}
+
+    return $OCF_SUCCESS
+}
+
+csp_monitor() {
+    local blink
+    blink=0
+
+    if ! ocf_is_probe && [ "$__OCF_ACTION" = "monitor" ]; then
+        # Update the color of the Crystal Signal Pi device
+	if ! check_can_failover; then
+            # enable blinking if no nodes are ready for a further failover
+            blink=1
+        fi
+        change_device_color $(get_nodecolor) $blink
+    fi
+	
+    if [ -f ${OCF_RESKEY_state} ]; then
+	return $OCF_SUCCESS
+    fi
+
+    if ! ocf_is_probe && [ "$__OCF_ACTION" = "monitor" ]; then
+	# set exit string only when NOT_RUNNING occurs during an actual monitor operation.
+	ocf_exit_reason "No process state file found"
+    fi
+    return $OCF_NOT_RUNNING
+}
+
+csp_validate() {
+
+    if [ -z "$OCF_RESKEY_ip" ]; then
+	ocf_exit_reason "ip parameter not set"
+	return $OCF_ERR_CONFIGURED
+    fi
+
+    # Is the state directory writable? 
+    state_dir=$(dirname "$OCF_RESKEY_state")
+    touch "$state_dir/$$"
+    if [ $? != 0 ]; then
+	ocf_exit_reason "State file \"$OCF_RESKEY_state\" is not writable"
+	return $OCF_ERR_ARGS
+    fi
+    rm "$state_dir/$$"
+
+    return $OCF_SUCCESS
+}
+
+
+case $__OCF_ACTION in
+meta-data)	meta_data
+		exit $OCF_SUCCESS
+		;;
+start)		csp_start;;
+stop)		csp_stop;;
+monitor)	csp_monitor;;
+validate-all)	csp_validate;;
+usage|help)	csp_usage
+		exit $OCF_SUCCESS
+		;;
+*)		csp_usage
+		exit $OCF_ERR_UNIMPLEMENTED
+		;;
+esac
+rc=$?
+ocf_log debug "${OCF_RESOURCE_INSTANCE} $__OCF_ACTION : $rc"
+exit $rc

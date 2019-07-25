@@ -1,0 +1,15 @@
+[defaults]
+# human-readable stdout/stderr results display
+#  see. https://github.com/ansible/ansible/issues/27078
+stdout_callback = yaml
+
+gathering = smart
+retry_files_enabled = False
+
+#inventory = ./hosts-sample.yml
+
+
+## enable this option on Cygwin environment
+## ref. https://everythingshouldbevirtual.com/automation/ansible-using-ansible-on-windows-via-cygwin/
+#[ssh_connection]
+#ssh_args = -o ControlMaster=no
