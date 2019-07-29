@@ -68,7 +68,7 @@ meta_data() {
 <version>1.0</version>
 
 <longdesc lang="en">
-This ia a simple monitoring agent using the Crystal Signal Pi device.
+This is a simple monitoring agent using the Crystal Signal Pi device.
 It controls the colors and blinkings of the Crystal Signal Pi device
 to notify the resource status of the Pacemaker cluster to the sysadmin.
 
@@ -145,7 +145,7 @@ get_nodecolor() {
     local index
 
     nodename=$(crm_node -n)
-    index=$(crm_node -l | awk '$2 == "'${nodename}'" { print NR }')
+    index=$(crm_node -l | sort | awk '$2 == "'${nodename}'" { print NR }')
 
     set -- ${OCF_RESKEY_node_color_map}
     if [ -z "$index" ] || [ "$index" -gt $# ]; then

@@ -7,7 +7,7 @@ Copyright (c) 2019 Linux-HA Japan Project
 Pacemaker のクラスタの状態を、 Crystal Signal Pi の色を変化させることで
 視覚的にわかりやすく監視するためのリソースエージェントです。
 
-Crystal Signal Pi はインフィニットループ社の製品です。
+Crystal Signal Pi は株式会社インフィニットループの製品です。
 * http://crystal-signal.com/
 
 ## こんなことができます
@@ -45,8 +45,8 @@ order order_CrystalSignalPi inf: service-group CrystalSignalPi
 ## パラメタ一覧
 
 |パラメタ名 | 必須 |説明 |
-|---------|-----|------|
-|`ip`     | 必須 | Crystal Signal Pi のIPアドレス |
+|---------|:---:|------|
+|`ip`     |  ◯  | Crystal Signal Pi のIPアドレス |
 |`node_color_map` | - | ノード毎の色のリスト。RGB値を空白区切りのリストで指定する。クラスタを構成するノード数分の要素を指定する。<br>デフォルト値: "0,255,0 0,0,255" (緑、青の2ノード構成)|
 |`blink_period` | - | 片系運用時(フェイルオーバが不可の状態時)に点滅する速度(ミリ秒)。<br>デフォルト値: 500 |
 |`state` | - | リソースエージェント起動状態管理用ファイルのパス。通常変更不要。<br>デフォルト値: /var/run/resource-agents/CrystalSignalPi-RESOURCE_ID.state|
